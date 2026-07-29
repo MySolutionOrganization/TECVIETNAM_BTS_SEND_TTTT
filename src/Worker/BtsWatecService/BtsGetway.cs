@@ -38,6 +38,7 @@ namespace BtsGetwayService
         }
         public async void SendFile(DateTime to, DateTime from, int groupId)
         {
+            _logger.LogInformation("Start: {0}", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"));
             List<RegionalGroup> lstGroup = new List<RegionalGroup>();
             List<RegionalGroup> lstGroupAll = _groupData.GetAll().ToList();
             if (_appSetting.IsChooseGroup == 1)
@@ -49,8 +50,9 @@ namespace BtsGetwayService
                 foreach (var grp in lstGroup)
                 {
                     DateTime dateTime = from;
-                    #region Lấy dữ liệu                                     
+                    #region Lấy dữ liệu
                     List<WatecS10Model> listData = new List<WatecS10Model>();
+                    List<string> lstTramKhongCoDuLieu = new List<string>();
                     try
                     {
                         List<Site> lstSite = _siteData.GetListSite(grp.Id).ToList();
@@ -72,6 +74,14 @@ namespace BtsGetwayService
                                         modelFileS10Json.val = Utility.CheckNull(item.MRT);
                                         listData.Add(modelFileS10Json);
                                     }
+                                    else
+                                    {
+                                        lstTramKhongCoDuLieu.Add(site.Name);
+                                    }
+                                }
+                                else
+                                {
+                                    lstTramKhongCoDuLieu.Add(site.Name);
                                 }
                             }
                         }
@@ -81,15 +91,31 @@ namespace BtsGetwayService
                         _loggingService.Error(ex);
                         _logger.LogError(null, ex);
                     }
+
+                    if (lstTramKhongCoDuLieu.Count > 0)
+                    {
+                        var danhSachTramKhongCoDuLieu = string.Join(", ", lstTramKhongCoDuLieu);
+                        _logger.LogWarning("Group {0}: {1} tram khong co du lieu trong khoang {2} - {3}: {4}",
+                            grp.Name, lstTramKhongCoDuLieu.Count,
+                            from.ToString("dd/MM/yyyy HH:mm:ss"), to.ToString("dd/MM/yyyy HH:mm:ss"),
+                            danhSachTramKhongCoDuLieu);
+                        _loggingService.Warn($"Group {grp.Name}: {lstTramKhongCoDuLieu.Count} tram khong co du lieu: {danhSachTramKhongCoDuLieu}");
+                    }
                     #endregion
 
-                    #region Send data api                    
+                    #region Send data api
+                    if(listData.Count == 0)
+                    {
+                        _logger.LogInformation("Khong co du lieu de gui cho group " + grp.Name);
+                        continue;
+                    }
                     var result = await ApiSend.PostDataObject(_appSetting.ApiKey, _appSetting.UrlPost, listData);
-                    _loggingService.Info(result.Code + "/" + result.Message);
-                    _logger.LogInformation(result.Code + "/" + result.Message);
+                    _logger.LogInformation("Da gui {0} ban ghi cho group {1}. Ket qua: {2}/{3}", listData.Count, grp.Name, result.Code, result.Message);
+                    _loggingService.Info($"Da gui {listData.Count} ban ghi cho group {grp.Name}. Ket qua: {result.Code}/{result.Message}");
                     #endregion
                 }
             }
+            _logger.LogInformation("End: {0}", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"));
         }
     }
 }

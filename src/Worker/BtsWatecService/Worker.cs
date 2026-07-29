@@ -43,8 +43,7 @@ namespace BtsWatecService
 
                 DateTime from = _helperUlti.RoundDown(DateTime.Now, TimeSpan.FromMinutes(10));
                 DateTime to = from.AddMinutes(10);
-                _logger.LogInformation("Time start: {0}", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"));
-                _logger.LogInformation("Time start send data: {0}", from.ToString("dd/MM/yyyy HH:mm:ss"));
+                _logger.LogInformation("Time get data from: {0} to {1}", from.ToString("dd/MM/yyyy HH:mm:ss"), to.ToString("dd/MM/yyyy HH:mm:ss"));                
                 var tasks = new List<Task>();
                 tasks.Add(Task.Run(() => _btsGetway.SendFile(to, from, _groupID)));
                 tasks.Add(Task.Delay(600000, stoppingToken));
@@ -54,6 +53,7 @@ namespace BtsWatecService
         }
         public override async Task<Task> StartAsync(CancellationToken cancellationToken)
         {
+            _logger.LogInformation("Worker starting at: {0}", DateTimeOffset.Now.ToString("dd/MM/yyyy HH:mm:ss"));
             int groupId = 0;
             var dsGroups = _groupData.GetAll();
             if (_appSetting.IsChooseGroup == 1)
@@ -83,9 +83,9 @@ namespace BtsWatecService
             else
             {
                 var dateTimeNow = DateTime.Now;
-                var milisecondDelay = _helperUlti.ThoiGianDelayDeBatDauChayService(dateTimeNow);
-                _logger.LogInformation("Worker starting at: {0}", DateTimeOffset.Now.ToString("dd/MM/yyyy HH:mm:ss"));
+                var milisecondDelay = _helperUlti.ThoiGianDelayDeBatDauChayService(dateTimeNow, 1);                
                 await Task.Delay(milisecondDelay);
+                _logger.LogInformation("Starting at: {0}", DateTimeOffset.Now.ToString("dd/MM/yyyy HH:mm:ss"));
                 return base.StartAsync(cancellationToken);
             }
 

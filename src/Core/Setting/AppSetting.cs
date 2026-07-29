@@ -46,5 +46,6 @@ namespace Core.Setting
     {
         public string BotToken { get; set; }
         public string ChatId { get; set; }
+        public string ServerName { get; set; }
     }
 }

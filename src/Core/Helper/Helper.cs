@@ -3,9 +3,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 namespace BtsGetwayService
 {
@@ -126,7 +129,7 @@ namespace BtsGetwayService
         {
             return new DateTime((dt.Ticks + d.Ticks - 1) / d.Ticks * d.Ticks, dt.Kind);
         }
-        public int ThoiGianDelayDeBatDauChayService(DateTime input, int minute = 2)
+        public int ThoiGianDelayDeBatDauChayService(DateTime input, double minute = 2)
         {
             var timeStart = RoundUp(input, TimeSpan.FromMinutes(10));
             TimeSpan span;
@@ -199,7 +202,7 @@ namespace BtsGetwayService
         {
             var host = Dns.GetHostEntry(Dns.GetHostName());
             var ipAddress = host.AddressList.Where(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork).Select(x => x.ToString());
-            return JsonSerializer.Serialize(ipAddress) ?? "Unknown IP";
+            return System.Text.Json.JsonSerializer.Serialize(ipAddress) ?? "Unknown IP";
         }
     }
 }

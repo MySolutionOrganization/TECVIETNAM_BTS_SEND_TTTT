@@ -31,19 +31,17 @@ namespace Core.PushMessage
             try
             {
                 var chatId = new ChatId(_telegramConfig.ChatId);
-                var text = $"Địa chỉ IP: {ip}\n{message}";
+                var text = $"Server: {_telegramConfig.ServerName}.\nĐịa chỉ IP:{ip}\n{message}";
 
                 var result = await _botClient.SendTextMessageAsync(
                     chatId: chatId,
                     text: text,
                     parseMode: Telegram.Bot.Types.Enums.ParseMode.Html
                 );
-
-                Console.WriteLine($"✅ Đã gửi message ID: {result.MessageId}");
+                
             }
             catch (Exception ex)
-            {
-                Console.WriteLine($"❌ Lỗi gửi Telegram: {ex.Message}");
+            {                
             }            
         }
     }

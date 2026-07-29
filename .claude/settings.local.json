@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Grep",
+      "Glob",
+      "Bash(dotnet build)",
+      "Bash(dotnet test)",
+      "Bash(dotnet format)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(drop database)",
+      "Bash(truncate table)",
+      "Bash(delete from)",
+      "Bash(update *)"
+    ]
+  },
+  "project": {
+    "type": "aspnet-core-webapi",
+    "architecture": "mvc-mediatr-cqrs",
+    "language": "csharp"
+  }
+}
