@@ -48,4 +48,13 @@ namespace Core.Setting
         public string ChatId { get; set; }
         public string ServerName { get; set; }
     }
+    public class ElasticsearchLoggingSetting
+    {
+        public string NodeUris { get; set; }
+        public string IndexPrefix { get; set; }
+        public int BatchPostingLimit { get; set; }
+        public int PeriodSeconds { get; set; }
+        public string Username { get; set; }
+        public string Password { get; set; }
+    }
 }
