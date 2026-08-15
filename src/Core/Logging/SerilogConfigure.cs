@@ -20,6 +20,8 @@ namespace Core.Logging
     {
         public static IHostBuilder AddSerilogElasticsearch(this IHostBuilder hostBuilder, string applicationName)
         {
+            // writeToProviders: true - giữ lại các ILoggerProvider mà Host.CreateDefaultBuilder()/UseWindowsService()
+            // đã đăng ký (vd. Windows Event Log), tránh mất log của các ILogger<T> hiện có khi chạy dưới dạng Windows Service.
             return hostBuilder.UseSerilog((context, loggerConfig) =>
             {
                 var es = context.Configuration.GetSection("ElasticsearchLogging").Get<ElasticsearchLoggingSetting>();
@@ -51,15 +53,20 @@ namespace Core.Logging
                                 OutboundBufferMaxLifetime = TimeSpan.FromSeconds(es.PeriodSeconds)
                             };
                         };
-                    }, transport => transport.Authentication(new BasicAuthentication(es.Username, es.Password)));
+                    }, transport =>
+                    {
+                        transport.Authentication(new BasicAuthentication(es.Username, es.Password));
+                        transport.RequestTimeout(TimeSpan.FromSeconds(5));
+                    });
                 }
-                catch
+                catch (Exception ex)
                 {
                     // Elasticsearch shipping là best-effort observability, không phải chức năng cốt lõi.
                     // Nếu URI sai hoặc cluster không reachable lúc khởi động, vẫn tiếp tục chạy với Console sink,
                     // không được làm sập UdpService (luồng UDP mới là chính).
+                    Serilog.Debugging.SelfLog.WriteLine($"Elasticsearch logging sink disabled: {ex.Message}");
                 }
-            });
+            }, writeToProviders: true);
         }
     }
 }
