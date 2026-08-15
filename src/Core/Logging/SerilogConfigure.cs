@@ -9,6 +9,9 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
 using System;
+using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 
 namespace Core.Logging
 {
@@ -18,6 +21,20 @@ namespace Core.Logging
     /// </summary>
     public static class SerilogConfigure
     {
+        private static string GetLocalIpAddress()
+        {
+            try
+            {
+                return Dns.GetHostEntry(Dns.GetHostName()).AddressList
+                    .FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork)
+                    ?.ToString() ?? Dns.GetHostName();
+            }
+            catch
+            {
+                return Dns.GetHostName();
+            }
+        }
+
         public static IHostBuilder AddSerilogElasticsearch(this IHostBuilder hostBuilder, string applicationName)
         {
             // writeToProviders: true - giữ lại các ILoggerProvider mà Host.CreateDefaultBuilder()/UseWindowsService()
@@ -41,10 +58,19 @@ namespace Core.Logging
 
                 try
                 {
+                    var localIp = GetLocalIpAddress();
                     loggerConfig.WriteTo.Elasticsearch(new[] { new Uri(es.NodeUris) }, opts =>
                     {
                         opts.DataStream = new DataStreamName("logs", es.IndexPrefix, "default");
                         opts.BootstrapMethod = BootstrapMethod.Failure;
+                        opts.TextFormatting.MapCustom = (document, logEvent) =>
+                        {
+                            if (document.Host != null)
+                            {
+                                document.Host.Hostname = localIp;
+                            }
+                            return document;
+                        };
                         opts.ConfigureChannel = channelOpts =>
                         {
                             channelOpts.BufferOptions = new BufferOptions
