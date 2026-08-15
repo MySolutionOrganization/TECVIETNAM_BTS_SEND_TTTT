@@ -29,6 +29,7 @@ namespace UdpService
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
             Host.CreateDefaultBuilder(args)
+                .AddSerilogElasticsearch("UdpService")
                 .ConfigureServices((hostContext, services) =>
                 {
                     services.Configure<Connections>(hostContext.Configuration.GetSection("Connections"));
