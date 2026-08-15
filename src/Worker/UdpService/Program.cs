@@ -24,6 +24,7 @@ namespace UdpService
     {
         public static void Main(string[] args)
         {
+            Serilog.Debugging.SelfLog.Enable(System.Console.Error);
             CreateHostBuilder(args).Build().Run();
         }
 
