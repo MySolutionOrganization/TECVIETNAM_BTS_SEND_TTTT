@@ -55,6 +55,7 @@ namespace UdpService
         }
         public override Task StartAsync(CancellationToken cancellationToken)
         {
+            _logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
             _pushMessageService.SendMessageAsync("UDP Service is started.");
             while (true)
             {

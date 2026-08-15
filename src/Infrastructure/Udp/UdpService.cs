@@ -839,7 +839,7 @@ namespace Infrastructure.Udp
                 {
                     await _pushMessageService.SendMessageAsync(string.Join("\n", listMessage));
                 }
-                _logger.LogInformation("update disable: " + string.Join(",", lstDeviceId) + "\n update active: " + string.Join(",", lstDeviceIdUpdateActive));
+                _logger.LogInformation("update disable: " + lstDeviceId.Count() + "\n update active: " + lstDeviceIdUpdateActive.Count());
                 await Core.Helper.ApiSend.Call_PostDataAsync(null, _appSetting.UrlDomainWebQuanTrac, "Administrator/SuperAdmin/CacheManagerRemoveAll", null);
             }
             catch (Exception ex)
