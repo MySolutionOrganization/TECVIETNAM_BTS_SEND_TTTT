@@ -25,9 +25,10 @@ namespace BtsS10SendTTTT
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
            Host.CreateDefaultBuilder(args)
+               .AddSerilogElasticsearch("BtsS10SendTTTT")
                .ConfigureServices((hostContext, services) =>
                {
-                    //services.AddHttpClient();                   
+                    //services.AddHttpClient();
                    services.Configure<Connections>(hostContext.Configuration.GetSection("Connections"));
                    services.Configure<AppSetting>(hostContext.Configuration.GetSection("AppSetting"));
                    services.AddLog4net();
