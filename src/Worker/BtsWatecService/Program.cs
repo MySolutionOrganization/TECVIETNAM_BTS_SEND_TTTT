@@ -24,9 +24,10 @@ namespace BtsWatecService
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
             Host.CreateDefaultBuilder(args)
+                .AddSerilogElasticsearch("BtsWatecService")
                 .ConfigureServices((hostContext, services) =>
                 {
-                    //services.AddHttpClient();                   
+                    //services.AddHttpClient();
                     services.Configure<Connections>(hostContext.Configuration.GetSection("Connections"));
                     services.Configure<AppApiWatecSetting>(hostContext.Configuration.GetSection("AppApiWatecSetting"));
                     services.AddLog4net();
