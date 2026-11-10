@@ -61,6 +61,19 @@ namespace bts.udpgateway
             string query = string.Format(@"select * from Site where Group_Id=@Group_ID and IsActive=1", groupId);
             return Query<Site>(query, listParameter);
         }
+        /// <summary>
+        /// Lấy các trạm đang hoạt động của một group theo đúng loại trạm.
+        /// Lọc ngay ở SQL thay vì lấy hết rồi lọc trong C#.
+        /// </summary>
+        public IEnumerable<Site> GetListSiteByType(int groupId, int typeSiteId)
+        {
+            DynamicParameters listParameter = new DynamicParameters();
+            listParameter.Add("@Group_Id", groupId);
+            listParameter.Add("@TypeSiteId", typeSiteId);
+            string query = @"select * from Site
+                             where Group_Id = @Group_Id and TypeSiteId = @TypeSiteId and IsActive = 1";
+            return Query<Site>(query, listParameter);
+        }
         public async Task<IEnumerable<Site>> GetDsSite(List<int> dsDeviceId)
         {
             DynamicParameters listParameter = new DynamicParameters();

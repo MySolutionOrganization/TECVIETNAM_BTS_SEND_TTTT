@@ -22,14 +22,12 @@ namespace UdpService
         private readonly IUdpService _udpService;
         static private UdpClient _udpClient = null;
         static private IPEndPoint _endpoint = null;
-        private AppSettingUDP _appSettingUDP;
-        private readonly ILoggingService _loggingService;
+        private AppSettingUDP _appSettingUDP;        
         private readonly IPushMessageService _pushMessageService;
         //public readonly IWorkerMessageQueueService _workerMessageQueueService;
         //public readonly IMasterMessageQueueService _masterMessageQueueService;
         public UdpService(ILogger<UdpService> logger,
-            IUdpService udpService,
-            ILoggingService loggingService,
+            IUdpService udpService,            
             IPushMessageService pushMessageService,
             //IWorkerMessageQueueService workerMessageQueueService,
             //IMasterMessageQueueService masterMessageQueueService,
@@ -38,8 +36,7 @@ namespace UdpService
         {
             _logger = logger;
             _udpService = udpService;
-            _appSettingUDP = options.Value;
-            _loggingService = loggingService;
+            _appSettingUDP = options.Value;            
             _pushMessageService = pushMessageService;
             //_workerMessageQueueService = workerMessageQueueService;
             //_masterMessageQueueService = masterMessageQueueService;
@@ -98,7 +95,7 @@ namespace UdpService
                             }
                             else
                             {
-                                _loggingService.Info("message: " + subMessage);
+                                _logger.LogInformation("message: " + subMessage);
                                 ReturnInfo returnInfo = _udpService.Insert(subMessage).GetAwaiter().GetResult();
                             }
 

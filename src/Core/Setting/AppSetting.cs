@@ -18,6 +18,15 @@ namespace Core.Setting
         public int IsSendWatec { get; set; }
         public string ApiWatecKey { get; set; }
         public string ApiWatecUrl { get; set; }
+        /// <summary>
+        /// Số bản tin mất liên tiếp thì dừng phát về Watec và cảnh báo. Mặc định 3 nếu không cấu hình.
+        /// Mất bản tin thứ 1..(MaxMissingMessages-1) vẫn phát với số liệu mưa = 0.
+        /// </summary>
+        public int MaxMissingMessages { get; set; }
+        /// <summary>
+        /// Số lần thử gửi tối đa khi API Watec lỗi tạm thời (mạng/timeout/5xx). Mặc định 3.
+        /// </summary>
+        public int MaxSendAttempts { get; set; }
     }
     public class AppSettingUDP
     {

@@ -31,6 +31,40 @@ namespace bts.udpgateway
                                             where DateCreate between '{0}' and '{1}'  and r.DeviceId = {2} order by r.id desc", dateFrom, dateTo, deviceId);
             return Query<ReportS10>(query, null);
         }
+        /// <summary>
+        /// Lấy bản tin MỚI NHẤT trong khoảng [from, to) của từng thiết bị, gộp tất cả thiết bị
+        /// vào một câu query thay vì mỗi thiết bị một lần gọi DB.
+        /// </summary>
+        public IEnumerable<ReportS10> GetLatestInRange(DateTime from, DateTime to, IEnumerable<int> deviceIds)
+        {
+            var result = new List<ReportS10>();
+            if (deviceIds == null)
+                return result;
+
+            var dsDeviceId = deviceIds.Distinct().ToList();
+            if (dsDeviceId.Count == 0)
+                return result;
+
+            // SQL Server giới hạn 2100 tham số cho một câu lệnh -> chia lô cho an toàn.
+            const int kichThuocLo = 1000;
+            string query = @"SELECT t.* FROM (
+                                 SELECT r.*, ROW_NUMBER() OVER (
+                                     PARTITION BY r.DeviceId
+                                     ORDER BY r.DateCreate DESC, r.ID DESC) AS rn
+                                 FROM ReportS10 r
+                                 WHERE r.DateCreate >= @From
+                                   AND r.DateCreate < @To
+                                   AND r.DeviceId IN @DeviceIds
+                             ) t WHERE t.rn = 1";
+
+            for (int i = 0; i < dsDeviceId.Count; i += kichThuocLo)
+            {
+                var lo = dsDeviceId.Skip(i).Take(kichThuocLo).ToList();
+                // Dapper tự mở rộng @DeviceIds thành danh sách tham số cho mệnh đề IN.
+                result.AddRange(Query<ReportS10>(query, new { From = from, To = to, DeviceIds = lo }));
+            }
+            return result;
+        }
         public ReportS10 GetLatest(int deviceId)
         {
             string query = string.Format(@"select top 1 * from ReportS10 where DeviceId = {0}

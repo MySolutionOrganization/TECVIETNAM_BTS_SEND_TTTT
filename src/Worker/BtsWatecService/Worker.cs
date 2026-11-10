@@ -6,7 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
-using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,17 +14,26 @@ namespace BtsWatecService
 {
     public class Worker : BackgroundService
     {
+        /// <summary>Chu kỳ phát số liệu.</summary>
+        private static readonly TimeSpan ChuKy = TimeSpan.FromMinutes(10);
+        /// <summary>
+        /// Thời gian chờ sau mốc chu kỳ trước khi đọc DB, để trạm kịp gửi bản tin về.
+        /// Cửa sổ truy vấn là chu kỳ LIỀN TRƯỚC nên đây chỉ là ân hạn cho độ trễ ghi DB.
+        /// </summary>
+        private static readonly TimeSpan AnHan = TimeSpan.FromMinutes(1);
+
         private readonly ILogger<Worker> _logger;
-        public readonly IGroupData _groupData;
-        public readonly BtsGetway _btsGetway;
-        public readonly Helper _helperUlti;
+        private readonly IGroupData _groupData;
+        private readonly BtsGetway _btsGetway;
+        private readonly Helper _helperUlti;
         private readonly ILoggingService _loggingService;
-        public readonly AppApiWatecSetting _appSetting;
-        public int _groupID;
+        private readonly AppApiWatecSetting _appSetting;
+        private int _groupID;
+
         public Worker(ILogger<Worker> logger,
             IOptions<AppApiWatecSetting> option,
             BtsGetway btsGetway,
-             IGroupData groupData,
+            IGroupData groupData,
             ILoggingService loggingService,
             Helper helperUlti)
         {
@@ -38,58 +47,101 @@ namespace BtsWatecService
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            while (!stoppingToken.IsCancellationRequested)
+            try
             {
+                // Canh mốc chu kỳ ở đây chứ không phải trong StartAsync: StartAsync chặn thì
+                // Windows SCM sẽ coi service là "failed to start" sau 30 giây.
+                var delay = ReportTimeWindow.DelayToiMocTiepTheo(DateTime.Now, ChuKy, AnHan);
+                _logger.LogInformation(
+                    "Cho {GiaySecond:F0}s de canh moc chu ky, bat dau luc {MocBatDau:dd/MM/yyyy HH:mm:ss}.",
+                    delay.TotalSeconds, DateTime.Now.Add(delay));
+                await Task.Delay(delay, stoppingToken);
 
-                DateTime from = _helperUlti.RoundDown(DateTime.Now, TimeSpan.FromMinutes(10));
-                DateTime to = from.AddMinutes(10);
-                _logger.LogInformation("Time get data from: {0} to {1}", from.ToString("dd/MM/yyyy HH:mm:ss"), to.ToString("dd/MM/yyyy HH:mm:ss"));                
-                var tasks = new List<Task>();
-                tasks.Add(Task.Run(() => _btsGetway.SendFile(to, from, _groupID)));
-                tasks.Add(Task.Delay(600000, stoppingToken));
-                Task t = Task.WhenAll(tasks);
-                await t;
+                using (var timer = new PeriodicTimer(ChuKy))
+                {
+                    do
+                    {
+                        await ChayMotChuKy(stoppingToken);
+                    }
+                    while (await timer.WaitForNextTickAsync(stoppingToken));
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("Worker da dung theo yeu cau.");
             }
         }
-        public override async Task<Task> StartAsync(CancellationToken cancellationToken)
+
+        private async Task ChayMotChuKy(CancellationToken stoppingToken)
+        {
+            try
+            {
+                var window = ReportTimeWindow.ChuKyLienTruoc(DateTime.Now, ChuKy);
+                _logger.LogInformation("Lay du lieu chu ky {Window}.", window);
+                await _btsGetway.SendFile(window, _groupID, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Lỗi của một chu kỳ không được làm dừng hẳn service.
+                _loggingService.Error(ex);
+                _logger.LogError(ex, "Loi khi chay chu ky phat so lieu.");
+            }
+        }
+
+        public override Task StartAsync(CancellationToken cancellationToken)
         {
             _logger.LogInformation("Worker starting at: {0}", DateTimeOffset.Now.ToString("dd/MM/yyyy HH:mm:ss"));
-            int groupId = 0;
-            var dsGroups = _groupData.GetAll();
+
             if (_appSetting.IsChooseGroup == 1)
+                _groupID = ChonGroupThuCong();
+
+            // Trả về ngay, không chặn. Việc canh mốc chu kỳ nằm trong ExecuteAsync.
+            return base.StartAsync(cancellationToken);
+        }
+
+        /// <summary>
+        /// Hỏi người dùng chọn group. Chỉ dùng được khi chạy dạng console;
+        /// chạy dạng Windows Service thì Console.ReadLine() sẽ treo vĩnh viễn.
+        /// </summary>
+        private int ChonGroupThuCong()
+        {
+            if (!Environment.UserInteractive)
             {
-                _logger.LogInformation("Vui long chon gia tri group can gui");
-                foreach (var item in dsGroups)
-                {
-                    _logger.LogInformation("Gia tri: ({0}) \t Ten: {1}", item.Id, _helperUlti.CreateTitle(item.Name));
-                }
-                _logger.LogInformation("Nhap Gia tri: ");
-                groupId = Convert.ToInt32(Console.ReadLine());
-                if (groupId != 0)
-                {
-                    _groupID = groupId;
-                    var dateTimeNow = DateTime.Now;
-                    var milisecondDelay = _helperUlti.ThoiGianDelayDeBatDauChayService(dateTimeNow);
-                    _logger.LogInformation("Worker delay " + milisecondDelay);
-                    _logger.LogInformation("Worker starting at: {0}", DateTimeOffset.Now.ToString("dd/MM/yyyy HH:mm:ss"));
-                    await Task.Delay(milisecondDelay);
-                    return base.StartAsync(cancellationToken);
-                }
-                else
-                {
-                    return base.StopAsync(cancellationToken);
-                }
-            }
-            else
-            {
-                var dateTimeNow = DateTime.Now;
-                var milisecondDelay = _helperUlti.ThoiGianDelayDeBatDauChayService(dateTimeNow, 1);                
-                await Task.Delay(milisecondDelay);
-                _logger.LogInformation("Starting at: {0}", DateTimeOffset.Now.ToString("dd/MM/yyyy HH:mm:ss"));
-                return base.StartAsync(cancellationToken);
+                _logger.LogWarning(
+                    "IsChooseGroup=1 nhung dang chay dang Windows Service (khong co console). " +
+                    "Bo qua buoc chon group, se phat cho TAT CA group.");
+                _loggingService.Warn(
+                    "IsChooseGroup=1 khong dung duoc khi chay dang Windows Service. Dang phat cho tat ca group.");
+                return 0;
             }
 
+            try
+            {
+                var dsGroups = _groupData.GetAll().ToList();
+                _logger.LogInformation("Vui long chon gia tri group can gui");
+                foreach (var item in dsGroups)
+                    _logger.LogInformation("Gia tri: ({0}) \t Ten: {1}", item.Id, _helperUlti.CreateTitle(item.Name));
+
+                _logger.LogInformation("Nhap Gia tri: ");
+                var nhap = Console.ReadLine();
+                if (int.TryParse(nhap, out int groupId) && groupId != 0)
+                    return groupId;
+
+                _logger.LogWarning("Gia tri group khong hop le, se phat cho TAT CA group.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.Error(ex);
+                _logger.LogError(ex, "Khong chon duoc group, se phat cho TAT CA group.");
+                return 0;
+            }
         }
+
         public override Task StopAsync(CancellationToken cancellationToken)
         {
             _logger.LogWarning("Worker stopping at: {0}", DateTimeOffset.Now.ToString("dd/MM/yyyy HH:mm"));

@@ -8,6 +8,8 @@ using Core.Model.Report.ReportDay;
 using Core.MSSQL.Responsitory.Interface;
 using Core.Setting;
 using Dapper;
+using Elastic.CommonSchema;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections;
@@ -23,12 +25,12 @@ namespace Infrastructure.Udp
     {
         public readonly IReportS10Data _reportS10Data;
         public readonly ISiteData _siteData;
-        public readonly AppApiWatecSetting _appApiWatecSetting;
-        private readonly ILoggingService _loggingService;
+        public readonly AppApiWatecSetting _appApiWatecSetting;        
+        private readonly ILogger<ReportS10Service> _loggingService;
         private string _cacheKey;
         public ReportS10Service(IReportS10Data reportS10Data
             , ISiteData siteData
-            , ILoggingService loggingService
+            , ILogger<ReportS10Service> loggingService
             , IOptions<AppApiWatecSetting> appApiWatecSetting            
             , IOptions<CacheSettings> option
             )
@@ -201,8 +203,8 @@ namespace Infrastructure.Udp
                                        System.Globalization.CultureInfo.InvariantCulture);
             }
             catch (Exception ex)
-            {
-                _loggingService.Error(ex);
+            {                
+                _loggingService.LogError(ex, "Lỗi xử lý DateTime.ParseExact");
             }
             dictionary1.Add(new KeyValuePair<string, string>("EQID", s1));
             dictionary1.Add(new KeyValuePair<string, string>("S10", "1"));
@@ -318,7 +320,7 @@ namespace Infrastructure.Udp
                 }
                 catch (Exception ex)
                 {
-                    _loggingService.Error(ex);
+                    _loggingService.LogError(ex, "Lỗi xử lý ReportS10");
                     return dataMongo;
                 }
             }
@@ -357,8 +359,8 @@ namespace Infrastructure.Udp
                     t.Wait();
                 }
                 catch (Exception ex)
-                {
-                    _loggingService.Error(ex);
+                {                    
+                    _loggingService.LogError(ex, "Lỗi xử lý InsertS10");
                 }
                 finally
                 {

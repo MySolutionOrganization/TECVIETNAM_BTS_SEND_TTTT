@@ -1,121 +1,197 @@
-﻿using bts.udpgateway;
-using BtsGetwayService.MSSQL.Entity;
-using Core.Helper;
+﻿using BtsGetwayService.MSSQL.Entity;
 using Core.Logging;
-using Core.Model;
 using Core.MSSQL.Responsitory.Interface;
+using Core.PushMessage;
 using Core.Setting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace BtsGetwayService
 {
+    /// <summary>
+    /// Điều phối một chu kỳ phát số liệu: với mỗi group, thu thập số liệu rồi gửi lên Watec
+    /// và log tổng hợp. Không chứa SQL, không chứa HTTP.
+    /// </summary>
     public class BtsGetway
     {
         private readonly ILogger<BtsGetway> _logger;
-        public readonly IGroupData _groupData;
+        private readonly IGroupData _groupData;
         private readonly ILoggingService _loggingService;
-        public readonly ISiteData _siteData;
-        public readonly IReportS10Data _reportS10Data;
-        public readonly AppApiWatecSetting _appSetting;
-        Helper helperUlti = new Helper();
-        public BtsGetway(ILogger<BtsGetway> logger,
+        private readonly RainDataCollector _collector;
+        private readonly IWatecApiClient _apiClient;
+        private readonly IPushMessageService _pushMessageService;
+        private readonly AppApiWatecSetting _appSetting;
+
+        public BtsGetway(
+            ILogger<BtsGetway> logger,
             IOptions<AppApiWatecSetting> option,
             IGroupData groupData,
-            ISiteData siteData,
             ILoggingService loggingService,
-            IReportS10Data reportS10Data)
+            RainDataCollector collector,
+            IWatecApiClient apiClient,
+            IPushMessageService pushMessageService)
         {
             _appSetting = option.Value;
             _groupData = groupData;
-            _siteData = siteData;
             _loggingService = loggingService;
-            _reportS10Data = reportS10Data;
+            _collector = collector;
+            _apiClient = apiClient;
+            _pushMessageService = pushMessageService;
             _logger = logger;
         }
-        public async void SendFile(DateTime to, DateTime from, int groupId)
+
+        public async Task SendFile(ReportTimeWindow window, int groupId, CancellationToken cancellationToken = default)
         {
-            _logger.LogInformation("Start: {0}", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"));
-            List<RegionalGroup> lstGroup = new List<RegionalGroup>();
-            List<RegionalGroup> lstGroupAll = _groupData.GetAll().ToList();
-            if (_appSetting.IsChooseGroup == 1)
-                lstGroup = lstGroupAll.Where(i => i.Id == groupId).ToList();
-            else
-                lstGroup = lstGroupAll;
-            if (lstGroup != null && lstGroup.Count() > 0)
+            _logger.LogInformation("Bat dau chu ky {Window}.", window);
+
+            List<RegionalGroup> lstGroup;
+            try
             {
-                foreach (var grp in lstGroup)
-                {
-                    DateTime dateTime = from;
-                    #region Lấy dữ liệu
-                    List<WatecS10Model> listData = new List<WatecS10Model>();
-                    List<string> lstTramKhongCoDuLieu = new List<string>();
-                    try
-                    {
-                        List<Site> lstSite = _siteData.GetListSite(grp.Id).ToList();
-                        foreach (var site in lstSite)
-                        {
-                            _logger.LogInformation("Get " + site.Name);
-                            if (site.TypeSiteId == Constant.DoMua)
-                            {
-                                if (site.DeviceId.HasValue)
-                                {
-                                    var item = _reportS10Data.GetByTime(from, to, site.DeviceId.Value).LastOrDefault();
-                                    if (item != null)
-                                    {
-                                        _logger.LogInformation("Push Data " + item);
-                                        WatecS10Model modelFileS10Json = new WatecS10Model();
-                                        modelFileS10Json.sid = item.DeviceId.Value.ToString("D10");
-                                        modelFileS10Json.from = item.DateCreate.Value.ToString("yyyy-MM-dd HH:mm");
-                                        modelFileS10Json.to = item.DateCreate.Value.ToString("yyyy-MM-dd HH:mm");
-                                        modelFileS10Json.val = Utility.CheckNull(item.MRT);
-                                        listData.Add(modelFileS10Json);
-                                    }
-                                    else
-                                    {
-                                        lstTramKhongCoDuLieu.Add(site.Name);
-                                    }
-                                }
-                                else
-                                {
-                                    lstTramKhongCoDuLieu.Add(site.Name);
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _loggingService.Error(ex);
-                        _logger.LogError(null, ex);
-                    }
-
-                    if (lstTramKhongCoDuLieu.Count > 0)
-                    {
-                        var danhSachTramKhongCoDuLieu = string.Join(", ", lstTramKhongCoDuLieu);
-                        _logger.LogWarning("Group {0}: {1} tram khong co du lieu trong khoang {2} - {3}: {4}",
-                            grp.Name, lstTramKhongCoDuLieu.Count,
-                            from.ToString("dd/MM/yyyy HH:mm:ss"), to.ToString("dd/MM/yyyy HH:mm:ss"),
-                            danhSachTramKhongCoDuLieu);
-                        _loggingService.Warn($"Group {grp.Name}: {lstTramKhongCoDuLieu.Count} tram khong co du lieu: {danhSachTramKhongCoDuLieu}");
-                    }
-                    #endregion
-
-                    #region Send data api
-                    if(listData.Count == 0)
-                    {
-                        _logger.LogInformation("Khong co du lieu de gui cho group " + grp.Name);
-                        continue;
-                    }
-                    var result = await ApiSend.PostDataObject(_appSetting.ApiKey, _appSetting.UrlPost, listData);
-                    _logger.LogInformation("Da gui {0} ban ghi cho group {1}. Ket qua: {2}/{3}", listData.Count, grp.Name, result.Code, result.Message);
-                    _loggingService.Info($"Da gui {listData.Count} ban ghi cho group {grp.Name}. Ket qua: {result.Code}/{result.Message}");
-                    #endregion
-                }
+                var lstGroupAll = _groupData.GetAll().ToList();
+                lstGroup = _appSetting.IsChooseGroup == 1
+                    ? lstGroupAll.Where(i => i.Id == groupId).ToList()
+                    : lstGroupAll;
             }
-            _logger.LogInformation("End: {0}", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"));
+            catch (Exception ex)
+            {
+                _loggingService.Error(ex);
+                _logger.LogError(ex, "Khong lay duoc danh sach group.");
+                return;
+            }
+
+            foreach (var grp in lstGroup)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await XuLyMotGroup(grp, window, cancellationToken);
+            }
+
+            _logger.LogInformation("Ket thuc chu ky {Window}.", window);
+        }
+
+        private async Task XuLyMotGroup(RegionalGroup grp, ReportTimeWindow window, CancellationToken cancellationToken)
+        {
+            RainCollectResult collected;
+            try
+            {
+                collected = _collector.Collect(grp.Id, window);
+            }
+            catch (Exception ex)
+            {
+                // Một group lỗi không được làm hỏng các group còn lại.
+                _loggingService.Error(ex);
+                _logger.LogError(ex, "Loi khi thu thap so lieu cho group {GroupName}.", grp.Name);
+                return;
+            }
+
+            GhiLogTongHop(grp, window, collected);
+
+            foreach (var tram in collected.TramKhoiPhuc)
+                await CanhBaoKhoiPhuc(tram);
+
+            foreach (var tram in collected.TramDungPhat.Where(t => t.CanCanhBao))
+                await CanhBaoMatBanTin(grp, tram, window);
+
+            if (collected.Payload.Count == 0)
+            {
+                _logger.LogInformation("Khong co du lieu de gui cho group {GroupName}.", grp.Name);
+                return;
+            }
+
+            var result = await _apiClient.SendAsync(collected.Payload, cancellationToken);
+            if (result.Success)
+            {
+                _logger.LogInformation(
+                    "Da gui {SoBanGhi} ban ghi cho group {GroupName} sau {SoLan} lan thu. HTTP {StatusCode}.",
+                    collected.Payload.Count, grp.Name, result.AttemptCount, result.StatusCode);
+                _loggingService.Info(
+                    $"Da gui {collected.Payload.Count} ban ghi cho group {grp.Name}. HTTP {result.StatusCode}");
+            }
+            else
+            {
+                _logger.LogError(
+                    "Gui that bai {SoBanGhi} ban ghi cho group {GroupName} sau {SoLan} lan thu. {StatusCode}: {Message}",
+                    collected.Payload.Count, grp.Name, result.AttemptCount, result.StatusCode, result.Message);
+            }
+        }
+
+        private void GhiLogTongHop(RegionalGroup grp, ReportTimeWindow window, RainCollectResult collected)
+        {
+            if (collected.TramKhongCoDuLieu.Count > 0)
+            {
+                var danhSach = string.Join(", ", collected.TramKhongCoDuLieu);
+                _logger.LogWarning(
+                    "Group {GroupName}: {SoTram} tram khong co du lieu trong {Window}: {DanhSach}",
+                    grp.Name, collected.TramKhongCoDuLieu.Count, window, danhSach);
+                _loggingService.Warn(
+                    $"Group {grp.Name}: {collected.TramKhongCoDuLieu.Count} tram khong co du lieu: {danhSach}");
+            }
+
+            if (collected.TramBuSoLieu0.Count > 0)
+            {
+                var danhSach = string.Join(", ", collected.TramBuSoLieu0);
+                _loggingService.Warn(
+                    $"Group {grp.Name}: {collected.TramBuSoLieu0.Count} tram duoc bu so lieu mua = 0: {danhSach}");
+            }
+
+            if (collected.TramDungPhat.Count > 0)
+            {
+                var danhSach = string.Join(", ",
+                    collected.TramDungPhat.Select(t => $"{t.Site.Name} (mat {t.SoBanTinMatLienTiep} ban tin lien tiep)"));
+                _loggingService.Fatal(
+                    $"Group {grp.Name}: {collected.TramDungPhat.Count} tram da dung phat ve Watec: {danhSach}");
+            }
+        }
+
+        /// <summary>
+        /// Cảnh báo trạm mất bản tin liên tiếp đến ngưỡng, đã dừng phát về Watec.
+        /// </summary>
+        private async Task CanhBaoMatBanTin(RegionalGroup grp, TramMatBanTin tram, ReportTimeWindow window)
+        {
+            var noiDung = $"🔴 DUNG PHAT WATEC\n"
+                + $"Tram: {tram.Site.Name}\n"
+                + $"DeviceId: {tram.DeviceId}\n"
+                + $"Khu vuc: {grp.Name}\n"
+                + $"Da mat {tram.SoBanTinMatLienTiep} ban tin lien tiep (den {window.To:dd/MM/yyyy HH:mm}).\n"
+                + $"Da ngung phat so lieu ve Watec cho tram nay.";
+            await GuiCanhBao(noiDung);
+            _loggingService.Fatal(noiDung.Replace("\n", " | "));
+        }
+
+        /// <summary>
+        /// Cảnh báo trạm đã có dữ liệu trở lại sau khi bị dừng phát.
+        /// </summary>
+        private async Task CanhBaoKhoiPhuc(TramKhoiPhuc tram)
+        {
+            var noiDung = $"🟢 PHAT LAI WATEC\n"
+                + $"Tram: {tram.Site.Name}\n"
+                + $"DeviceId: {tram.DeviceId}\n"
+                + $"Da co du lieu tro lai sau {tram.SoBanTinDaMat} ban tin bi mat. Tiep tuc phat ve Watec.";
+            await GuiCanhBao(noiDung);
+            _loggingService.Info(noiDung.Replace("\n", " | "));
+            _logger.LogInformation(
+                "Tram {SiteName} (DeviceId {DeviceId}) da co du lieu tro lai, phat lai ve Watec.",
+                tram.Site.Name, tram.DeviceId);
+        }
+
+        /// <summary>
+        /// Telegram lỗi không được làm hỏng luồng phát số liệu.
+        /// </summary>
+        private async Task GuiCanhBao(string noiDung)
+        {
+            try
+            {
+                await _pushMessageService.SendMessageAsync(noiDung);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.Error(ex);
+                _logger.LogError(ex, "Khong gui duoc canh bao Telegram.");
+            }
         }
     }
 }
