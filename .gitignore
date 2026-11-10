@@ -348,3 +348,11 @@ MigrationBackup/
 
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
+/src/Worker/BtsWatecService/appsettings.json
+/src/Worker/BtsWatecService/appsettings.Development.json
+/src/Api/Api_Watec/appsettings.json
+/src/Api/GatewayApi/appsettings.json
+/src/Worker/BtsS10SendTTTT/appsettings.json
+/src/Worker/CheckActiveDevice/appsettings.json
+/src/Test/UnitTest/appsettings.json
+/src/Worker/UdpService/appsettings.json
